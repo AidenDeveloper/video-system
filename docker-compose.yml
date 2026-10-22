@@ -1,0 +1,124 @@
+name: videosys
+
+x-hardening: &hardening
+  restart: unless-stopped
+  read_only: true
+  cap_drop: [ALL]
+  security_opt: ["no-new-privileges:true"]
+  tmpfs: ["/tmp:size=64m"]
+  logging:
+    driver: json-file
+    options: { max-size: "10m", max-file: "3" }
+
+x-node-env: &node-env
+  DB_HOST: mysql
+  DB_NAME: videodb
+  DB_USER: videoapp
+  DB_PASSWORD_FILE: /run/secrets/mysql_app_password
+  INTERNAL_API_KEY_FILE: /run/secrets/internal_api_key
+  AUTH_URL: http://auth-service:5000
+  FILE_URL: http://file-service:5001
+  AUTH_CACHE_TTL_MS: ${AUTH_CACHE_TTL_MS:-0}
+  LIST_CACHE_TTL_MS: ${LIST_CACHE_TTL_MS:-0}
+
+services:
+  mysql:
+    image: mysql:8.4
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD_FILE: /run/secrets/mysql_root_password
+    secrets: [mysql_root_password, mysql_app_password]
+    volumes:
+      - mysql_data:/var/lib/mysql
+      - ./mysql/init:/docker-entrypoint-initdb.d:ro
+    networks: [private]
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h127.0.0.1 -uroot -p\"$$(cat /run/secrets/mysql_root_password)\" --silent"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 40s
+    deploy: { resources: { limits: { cpus: "1.0", memory: 768M } } }
+
+  auth-service:
+    <<: *hardening
+    build: ./auth-service
+    image: ${REGISTRY:-local}/auth-service:${TAG:-dev}
+    environment:
+      DB_HOST: mysql
+      DB_NAME: videodb
+      DB_USER: authapp
+      DB_PASSWORD_FILE: /run/secrets/mysql_app_password
+      JWT_SECRET_FILE: /run/secrets/jwt_secret
+      ADMIN_PASSWORD_FILE: /run/secrets/admin_password
+      WEB_CONCURRENCY: ${WEB_CONCURRENCY:-1}
+    secrets: [mysql_app_password, jwt_secret, admin_password]
+    networks: [public, private]
+    depends_on: { mysql: { condition: service_healthy } }
+    deploy: { resources: { limits: { cpus: "0.5", memory: 256M } } }
+
+  file-service:
+    <<: *hardening
+    build: ./file-service
+    image: ${REGISTRY:-local}/file-service:${TAG:-dev}
+    environment:
+      INTERNAL_API_KEY_FILE: /run/secrets/internal_api_key
+      WEB_CONCURRENCY: ${WEB_CONCURRENCY:-1}
+    secrets: [internal_api_key]
+    volumes: [video_data:/data]
+    networks: [private]
+    deploy: { resources: { limits: { cpus: "0.5", memory: 256M } } }
+
+  upload-web:
+    <<: *hardening
+    tmpfs: ["/tmp:size=256m"]
+    build: ./upload-web
+    image: ${REGISTRY:-local}/upload-web:${TAG:-dev}
+    environment: *node-env
+    secrets: [mysql_app_password, internal_api_key]
+    networks: [public, private]
+    depends_on:
+      mysql: { condition: service_healthy }
+      auth-service: { condition: service_healthy }
+      file-service: { condition: service_healthy }
+    deploy: { resources: { limits: { cpus: "0.5", memory: 512M } } }
+
+  stream-web:
+    <<: *hardening
+    build: ./stream-web
+    image: ${REGISTRY:-local}/stream-web:${TAG:-dev}
+    environment: *node-env
+    secrets: [mysql_app_password, internal_api_key]
+    networks: [public, private]
+    depends_on:
+      mysql: { condition: service_healthy }
+      auth-service: { condition: service_healthy }
+      file-service: { condition: service_healthy }
+    deploy: { resources: { limits: { cpus: "0.5", memory: 256M } } }
+
+  gateway:
+    <<: *hardening
+    build: ./gateway
+    image: ${REGISTRY:-local}/gateway:${TAG:-dev}
+    ports: ["127.0.0.1:8080:8080"]
+    networks: [public]
+    depends_on:
+      auth-service: { condition: service_healthy }
+      upload-web: { condition: service_healthy }
+      stream-web: { condition: service_healthy }
+    deploy: { resources: { limits: { cpus: "0.25", memory: 128M } } }
+
+networks:
+  public: {}
+  private: { internal: true }
+
+volumes:
+  mysql_data:
+  video_data:
+
+secrets:
+  mysql_root_password: { file: ./secrets/mysql_root_password }
+  mysql_app_password:  { file: ./secrets/mysql_app_password }
+  jwt_secret:          { file: ./secrets/jwt_secret }
+  internal_api_key:    { file: ./secrets/internal_api_key }
+  admin_password:      { file: ./secrets/admin_password }

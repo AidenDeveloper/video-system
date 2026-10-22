@@ -1,0 +1,5 @@
+{
+  "name": "upload-web", "version": "1.0.0", "private": true,
+  "scripts": { "start": "node server.js", "test": "node --test" },
+  "dependencies": { "express": "^5.1.0", "multer": "^2.0.0", "mysql2": "^3.11.0" }
+}
