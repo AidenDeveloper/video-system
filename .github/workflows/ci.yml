@@ -23,16 +23,20 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
       - name: Generate secrets and configure environment
         run: |
-        bash ./scripts/gen-secrets.sh
-        cp .env.example .env
+          bash ./scripts/gen-secrets.sh
+          cp .env.example .env
+
       - run: docker compose up -d --build --wait --wait-timeout 240
+
       - run: |
           curl -fsS -c jar -H 'Content-Type: application/json' \
             -d "{\"username\":\"admin\",\"password\":\"$(cat secrets/admin_password)\"}" localhost:8080/login
           curl -fsS -b jar localhost:8080/api/videos
           test "$(curl -s -o /dev/null -w '%{http_code}' localhost:8080/api/videos)" = "302"
+
       - if: failure()
         run: docker compose logs --tail=100
 
