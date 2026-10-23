@@ -23,7 +23,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - run: ./scripts/gen-secrets.sh && cp .env.example .env
+      - name: Generate secrets and configure environment
+        run: |
+        bash ./scripts/gen-secrets.sh
+        cp .env.example .env
       - run: docker compose up -d --build --wait --wait-timeout 240
       - run: |
           curl -fsS -c jar -H 'Content-Type: application/json' \
