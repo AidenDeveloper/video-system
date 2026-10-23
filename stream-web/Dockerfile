@@ -1,5 +1,6 @@
 # syntax=docker/dockerfile:1
 FROM node:20-alpine AS deps
+USER root
 RUN apk update && apk upgrade
 WORKDIR /app
 COPY package.json package-lock.json ./
