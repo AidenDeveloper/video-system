@@ -1,5 +1,6 @@
 # syntax=docker/dockerfile:1
 FROM python:3.12-slim AS builder
+RUN apk update && apk upgrade
 RUN python -m venv /opt/venv
 ENV PATH="/opt/venv/bin:$PATH"
 COPY requirements.txt .
