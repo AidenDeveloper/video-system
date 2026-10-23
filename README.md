@@ -249,6 +249,6 @@ video-system/
 ## Known limitations
 
 - No TLS in the Compose setup. In production, terminate HTTPS at the gateway and set `COOKIE_SECURE=true`.
-- JWTs cannot be revoked before they expire (1 hour). The optional token cache widens this window by its TTL.
+- JWTs cannot be revoked before they expire. The optional token cache widens this window by its TTL.
 - If MySQL fails after a file has been stored, the stored file is orphaned (no cleanup job).
 - Single MySQL instance with no replication or backups.
